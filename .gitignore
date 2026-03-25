@@ -1,0 +1,11 @@
+# Dev tooling — not needed by skill consumers
+.agents/
+.claude/
+skills-lock.json
+jeelpay-workspace/
+*.skill
+
+# Loop output files
+evals/loop-results/
+evals/loop-output.json
+evals/loop-log.txt

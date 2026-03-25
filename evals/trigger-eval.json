@@ -1,0 +1,82 @@
+[
+  {
+    "query": "I need to integrate JeelPay into my Express.js school platform so parents can pay tuition in installments. I have client_id and client_secret from their team. Where do I start?",
+    "should_trigger": true
+  },
+  {
+    "query": "getting a 401 from api.sandbox.jeel.co after my token expires — do I need to re-authenticate and how do I cache the token properly?",
+    "should_trigger": true
+  },
+  {
+    "query": "what's the difference between JeelPay's Items checkout and Schooling checkout? our account is for a training institute",
+    "should_trigger": true
+  },
+  {
+    "query": "I need to build a Laravel webhook handler for jeel.co payment notifications and verify the X-Jeel-Signature header",
+    "should_trigger": true
+  },
+  {
+    "query": "creating a checkout request with POST /v3/checkout/schooling keeps returning 400, entity_id is null for students",
+    "should_trigger": true
+  },
+  {
+    "query": "how do I get the educational_year_id for JeelPay schooling checkout? where does that UUID come from?",
+    "should_trigger": true
+  },
+  {
+    "query": "build me a Python client for JeelPay's API with proper token caching — we're a university using the items endpoint",
+    "should_trigger": true
+  },
+  {
+    "query": "we want to add study now pay later through jeel.co to our school's enrollment portal, can you write the integration code in Java Spring Boot?",
+    "should_trigger": true
+  },
+  {
+    "query": "JeelPay webhook status values — is it 'approved' or 'SUCCEEDED'? getting confused by different docs",
+    "should_trigger": true
+  },
+  {
+    "query": "setting up sandbox testing for jeel pay, what test card and credentials should I use?",
+    "should_trigger": true
+  },
+  {
+    "query": "I want to add Stripe to my e-commerce checkout so customers can pay with credit card",
+    "should_trigger": false
+  },
+  {
+    "query": "integrate Tamara BNPL into our Saudi online store so shoppers can pay in 3 installments",
+    "should_trigger": false
+  },
+  {
+    "query": "how do I set up PayPal subscription payments for my SaaS product?",
+    "should_trigger": false
+  },
+  {
+    "query": "building a school management system in Django with student enrollment, grades, and fee tracking",
+    "should_trigger": false
+  },
+  {
+    "query": "implement installment payments for our furniture store — customer pays over 12 months",
+    "should_trigger": false
+  },
+  {
+    "query": "integrate Tabby payment gateway so customers can split purchases into 4 payments",
+    "should_trigger": false
+  },
+  {
+    "query": "Saudi payment gateway integration — we need to accept mada cards and Apple Pay on our website",
+    "should_trigger": false
+  },
+  {
+    "query": "webhook handler for Stripe with signature verification using HMAC-SHA256",
+    "should_trigger": false
+  },
+  {
+    "query": "university portal where students can register for courses and pay fees online",
+    "should_trigger": false
+  },
+  {
+    "query": "OAuth 2.0 client credentials flow implementation for our internal API — storing tokens with expiry",
+    "should_trigger": false
+  }
+]

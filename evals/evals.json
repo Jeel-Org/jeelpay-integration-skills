@@ -1,0 +1,23 @@
+{
+  "skill_name": "jeelpay-integration-skills",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to integrate JeelPay into my Express.js app. We run an online institute that sells professional certification courses and we want to offer installment payments for course fees. I have the client_id and client_secret from JeelPay. Where do I start?",
+      "expected_output": "Complete integration code including: an auth client with token caching, a checkout creation function using POST /v3/checkout (Items type - correct for institutes/courses), environment variable setup, and guidance on redirecting the buyer to JeelPay's redirect_url. Code should use env vars for credentials and not hardcode anything.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I need to set up a webhook endpoint for JeelPay in my Laravel app. I want to handle when a student's payment is approved or rejected and update our enrollment system accordingly.",
+      "expected_output": "A Laravel webhook controller that: reads the raw request body before parsing, computes HMAC-SHA256 of the body using client_secret, base64 encodes it, compares with X-Jeel-Signature header using hash_equals (timing-safe), handles each status (SUCCEEDED, REJECTED, EXPIRED, PENDING), and returns 200 quickly. Should include the signature verification logic clearly.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "We have a Django school management system and we need to integrate JeelPay to collect tuition fees for our students. Each student has a national_id and is enrolled in a specific academic year. Can you help me build the integration?",
+      "expected_output": "Integration code using POST /v3/checkout/schooling (Schooling type - correct for K-12 schools), including: auth client with token caching, checkout creation function with students array containing national_id, entity_id, educational_year_id and cost fields, environment variable config, webhook handler with signature verification, and a note about getting educational_year_id from JeelPay during onboarding.",
+      "files": []
+    }
+  ]
+}
