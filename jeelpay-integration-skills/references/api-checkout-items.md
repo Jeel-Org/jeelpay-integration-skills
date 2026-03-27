@@ -6,12 +6,15 @@ If your entity is a traditional school, use `api-checkout-schooling.md` instead.
 
 ## Checkout Flow
 
-1. Your server creates a checkout via `POST /v3/checkout` → receive `checkout_id` + `redirect_url`
-2. Redirect the buyer to `redirect_url` (JeelPay's hosted checkout page)
-3. Buyer logs in / registers on JeelPay, reviews items, completes KYC and down payment
-4. JeelPay redirects buyer back to your `redirect_url`
-5. JeelPay sends a webhook to your `notification_url` confirming the result
-6. You can also poll `GET /v3/checkout/{id}` at any time for the current status
+1. Generate a UUID for the idempotency key and save to your database (status: PENDING)
+2. Your server creates a checkout via `POST /v3/checkout` with `Idempotency-Key` header → receive `checkout_id` + `redirect_url`
+3. Extract the `tx_id` from response headers and store it for debugging/support
+4. If timeout occurs, retry with the same idempotency key
+5. Redirect the buyer to `redirect_url` (JeelPay's hosted checkout page)
+6. Buyer logs in / registers on JeelPay, reviews items, completes KYC and down payment
+7. JeelPay redirects buyer back to your `redirect_url`
+8. JeelPay sends a webhook to your `notification_url` confirming the result
+9. You can also poll `GET /v3/checkout/{id}` at any time for the current status
 
 ## Create Checkout
 
@@ -19,7 +22,10 @@ If your entity is a traditional school, use `api-checkout-schooling.md` instead.
 POST /v3/checkout
 Authorization: Bearer {access_token}
 Content-Type: application/json
+Idempotency-Key: {uuid}
 ```
+
+> **Idempotency:** Always generate a UUID first, save it to your database, then include it as the `Idempotency-Key` header. If a network timeout occurs, retry with the same key to prevent duplicate checkouts.
 
 ### Request Schema
 
@@ -110,6 +116,26 @@ Content-Type: application/json
 
 Redirect the buyer to `redirect_url` immediately after receiving this response.
 
+### Response Headers
+
+All responses include a `tx_id` header for debugging and support:
+
+```
+tx_id: b7734ba3-d2a0-476d-87fe-9ba49b64ef6c
+```
+
+Extract and store this value with your transaction record for support ticket resolution.
+
+**Node.js:**
+```javascript
+const txId = response.headers.get('tx_id');
+```
+
+**Python:**
+```python
+tx_id = response.headers.get('tx_id')
+```
+
 ### Error Responses
 
 | Status | Meaning |
@@ -162,13 +188,16 @@ Authorization: Bearer {access_token}
 ## Code Example (Node.js)
 
 ```javascript
-async function createItemsCheckout(buyer, items, referenceId) {
+async function createItemsCheckout(buyer, items, referenceId, idempotencyKey) {
+  // idempotencyKey should be a UUID generated before calling this function
+  // and saved to your database with status: 'PENDING'
   const token = await getAccessToken(); // use cached token
   const response = await fetch(`${process.env.JEELPAY_API_URL}/v3/checkout`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey, // prevents duplicates on retry
     },
     body: JSON.stringify({
       reference_id: referenceId,
@@ -181,17 +210,23 @@ async function createItemsCheckout(buyer, items, referenceId) {
     }),
   });
 
+  // Extract tx_id for debugging/support (present even on errors)
+  const txId = response.headers.get('tx_id');
+
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(`JeelPay checkout failed: ${JSON.stringify(error.errors)}`);
+    throw new Error(`JeelPay checkout failed (tx_id: ${txId}): ${JSON.stringify(error.errors)}`);
   }
 
-  return response.json(); // { checkout_id, redirect_url, ... }
+  const data = await response.json(); // { checkout_id, redirect_url, ... }
+  return { ...data, txId }; // include tx_id for storage
 }
 ```
 
 ## Important Notes
 
+- **Always use idempotency keys.** Generate a UUID, save it to your database with status `PENDING`, then include it as the `Idempotency-Key` header. If a network timeout occurs, retry with the same key to prevent duplicate checkouts. Keys expire after 24 hours.
+- **Always extract and store tx_id.** Every response includes a `tx_id` header for debugging. Store it with your transaction record for support ticket resolution.
 - Checkouts expire after **2 hours** of inactivity (`status` becomes `EXPIRED`). Create a new checkout if the buyer returns later.
 - `total_cost` must equal `unit_price × quantity` with exactly 2 decimal places.
 - All amounts are in **SAR (Saudi Riyals)**. No unit conversion needed — just SAR with 2 decimal places (e.g., `3500.00`).

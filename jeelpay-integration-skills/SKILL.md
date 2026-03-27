@@ -58,12 +58,16 @@ Token caching is non-negotiable — the auth endpoint is rate-limited. Every gen
 
 ### 2. Checkout Creation
 Read `references/api-checkout-items.md` or `references/api-checkout-schooling.md` depending on type.
+Also read `references/api-idempotency.md` — idempotency keys are required to prevent duplicate checkouts on network timeouts.
 
 The checkout flow is:
-1. Merchant server calls JeelPay API to create a checkout → receives `checkout_id` + `redirect_url`
-2. Merchant redirects buyer to `redirect_url` (JeelPay's platform for login/KYC/payment)
-3. JeelPay redirects buyer back to merchant's `redirect_url` with result
-4. JeelPay also sends a webhook to merchant's `notification_url`
+1. Generate UUID for idempotency key and save to database (status: PENDING)
+2. Merchant server calls JeelPay API with `Idempotency-Key` header to create checkout → receives `checkout_id` + `redirect_url` + `tx_id` (from response headers)
+3. Extract and store the `tx_id` from response headers for debugging/support purposes
+4. If timeout occurs, retry with the same idempotency key
+5. Merchant redirects buyer to `redirect_url` (JeelPay's platform for login/KYC/payment)
+6. JeelPay redirects buyer back to merchant's `redirect_url` with result
+7. JeelPay also sends a webhook to merchant's `notification_url`
 
 ### 3. Webhook Handler with Signature Verification
 Read `references/api-webhooks.md` before generating.
@@ -94,6 +98,13 @@ Map `JEELPAY_ENV` to the appropriate base URLs:
 
 **Token caching is mandatory.** The auth endpoint is rate-limited. If you generate code that requests
 a new token on every API call, the integration will break in production. Always cache with expiry.
+
+**Always use idempotency keys on checkout creation.** Network timeouts can cause duplicate checkouts
+if retried without an idempotency key. Generate a UUID, save it to your database first, then include it
+as the `Idempotency-Key` header. On timeout, retry with the same key.
+
+**Always extract and store tx_id from response headers.** Every API response includes a `tx_id` header
+for debugging. Store it with your transaction records for support ticket resolution.
 
 **Always verify webhook signatures.** Generate the HMAC-SHA256 + base64 check on every incoming webhook.
 Silently accepting webhooks without verification is a security vulnerability.
@@ -135,6 +146,8 @@ Load the appropriate file(s) before generating code:
 | Authentication + token caching | `references/api-auth.md` |
 | Items checkout (universities, courses, institutes) | `references/api-checkout-items.md` |
 | Schooling checkout (traditional schools) | `references/api-checkout-schooling.md` |
+| Idempotency keys (prevent duplicate checkouts) | `references/api-idempotency.md` |
+| tx_id extraction + support debugging | `references/api-debugging.md` |
 | Webhook handling + signature verification | `references/api-webhooks.md` |
 | Refund submission and status | `references/api-refund.md` |
 | Sandbox URLs, test card, test credentials | `references/testing.md` |

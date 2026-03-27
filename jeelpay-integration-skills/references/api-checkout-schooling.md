@@ -7,12 +7,15 @@ If your entity is a university, institute, training center, or higher education 
 
 ## Checkout Flow
 
-1. Your server creates a checkout via `POST /v3/checkout/schooling` → receive `checkout_id` + `redirect_url`
-2. Redirect the buyer (parent or guardian) to `redirect_url` (JeelPay's hosted checkout page)
-3. Buyer logs in / registers on JeelPay, reviews student info, completes KYC and down payment
-4. JeelPay redirects buyer back to your `redirect_url`
-5. JeelPay sends a webhook to your `notification_url` confirming the result
-6. You can also poll `GET /v3/checkout/{id}` at any time for the current status
+1. Generate a UUID for the idempotency key and save to your database (status: PENDING)
+2. Your server creates a checkout via `POST /v3/checkout/schooling` with `Idempotency-Key` header → receive `checkout_id` + `redirect_url`
+3. Extract the `tx_id` from response headers and store it for debugging/support
+4. If timeout occurs, retry with the same idempotency key
+5. Redirect the buyer (parent or guardian) to `redirect_url` (JeelPay's hosted checkout page)
+6. Buyer logs in / registers on JeelPay, reviews student info, completes KYC and down payment
+7. JeelPay redirects buyer back to your `redirect_url`
+8. JeelPay sends a webhook to your `notification_url` confirming the result
+9. You can also poll `GET /v3/checkout/{id}` at any time for the current status
 
 ## Create Checkout
 
@@ -20,7 +23,10 @@ If your entity is a university, institute, training center, or higher education 
 POST /v3/checkout/schooling
 Authorization: Bearer {access_token}
 Content-Type: application/json
+Idempotency-Key: {uuid}
 ```
+
+> **Idempotency:** Always generate a UUID first, save it to your database, then include it as the `Idempotency-Key` header. If a network timeout occurs, retry with the same key to prevent duplicate checkouts.
 
 ### Request Schema
 
@@ -111,6 +117,26 @@ Content-Type: application/json
 
 Redirect the buyer to `redirect_url` immediately after receiving this response.
 
+### Response Headers
+
+All responses include a `tx_id` header for debugging and support:
+
+```
+tx_id: b7734ba3-d2a0-476d-87fe-9ba49b64ef6c
+```
+
+Extract and store this value with your transaction record for support ticket resolution.
+
+**Python:**
+```python
+tx_id = response.headers.get('tx_id')
+```
+
+**Node.js:**
+```javascript
+const txId = response.headers.get('tx_id');
+```
+
 ### Error Responses
 
 | Status | Meaning |
@@ -164,9 +190,15 @@ Authorization: Bearer {access_token}
 ## Code Example (Python / Django)
 
 ```python
-import os, requests
+import os, uuid, requests
 
-def create_schooling_checkout(buyer: dict, students: list, reference_id: str) -> dict:
+def create_schooling_checkout(buyer: dict, students: list, reference_id: str, order_record) -> dict:
+    # Generate idempotency key and save to database first
+    idempotency_key = str(uuid.uuid4())
+    order_record.jeel_idempotency_key = idempotency_key
+    order_record.status = 'PENDING'
+    order_record.save()
+    
     token = get_access_token()  # use cached token
     payload = {
         "reference_id": reference_id,
@@ -180,16 +212,31 @@ def create_schooling_checkout(buyer: dict, students: list, reference_id: str) ->
     response = requests.post(
         f"{os.environ['JEELPAY_API_URL']}/v3/checkout/schooling",
         json=payload,
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": idempotency_key,  # prevents duplicates on retry
+        },
     )
+    
+    # Extract tx_id for debugging/support (present even on errors)
+    tx_id = response.headers.get('tx_id')
+    order_record.jeel_tx_id = tx_id
+    
     if not response.ok:
+        order_record.save()  # save tx_id even on errors
         errors = response.json().get("errors", [])
-        raise ValueError(f"JeelPay checkout failed: {errors}")
-    return response.json()  # { checkout_id, redirect_url, ... }
+        raise ValueError(f"JeelPay checkout failed (tx_id: {tx_id}): {errors}")
+    
+    data = response.json()  # { checkout_id, redirect_url, ... }
+    order_record.checkout_id = data['checkout_id']
+    order_record.save()
+    return data
 ```
 
 ## Important Notes
 
+- **Always use idempotency keys.** Generate a UUID, save it to your database with status `PENDING`, then include it as the `Idempotency-Key` header. If a network timeout occurs, retry with the same key to prevent duplicate checkouts. Keys expire after 24 hours.
+- **Always extract and store tx_id.** Every response includes a `tx_id` header for debugging. Store it with your transaction record for support ticket resolution.
 - Checkouts expire after **2 hours** of inactivity (`status` becomes `EXPIRED`). Create a new checkout for retries.
 - All amounts are in **SAR (Saudi Riyals)** with exactly 2 decimal places (e.g., `8500.00`). No currency conversion or smallest-unit representation needed.
 - `educational_year_id` must be a valid active educational year from JeelPay. Fetch the current list from the public endpoint (no auth required):
