@@ -12,6 +12,7 @@ When you ask any coding agent for help integrating JeelPay, this skill guides th
   - **Auth client** with token caching (required by JeelPay's rate-limited auth endpoint)
   - **Checkout creation** tailored to your checkout type
   - **Webhook handler** with HMAC-SHA256 signature verification
+  - **Refund support** for full/partial refunds, pending status tracking, and refund webhooks
   - **Environment-based config** for easy sandbox ↔ production switching
 
 Works with any language or framework — Node.js, Python, PHP, Java, Go, and more.
@@ -29,6 +30,8 @@ Just describe what you're building:
 > "Help me integrate JeelPay into my Express.js app"
 
 > "I need a webhook handler for JeelPay in Laravel"
+
+> "Add partial refunds and refund webhook handling for JeelPay"
 
 > "Add JeelPay schooling checkout to our Django school management system"
 
@@ -51,7 +54,8 @@ A full integration includes:
 2. **Checkout creation** — Create a checkout, get a `redirect_url`, send buyer there
 3. **Webhook handler** — Receive status updates (`SUCCEEDED`, `REJECTED`, `EXPIRED`) with signature verification
 4. **Status polling** — `GET /v3/checkout/{id}` for on-demand status checks
-5. **Environment config** — Env vars for credentials + sandbox/production URL switching
+5. **Refunds** — `POST /v1/refund`, refund status tracking, and refund webhook handling
+6. **Environment config** — Env vars for credentials + sandbox/production URL switching
 
 ## About JeelPay
 

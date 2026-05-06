@@ -40,6 +40,18 @@
     "should_trigger": true
   },
   {
+    "query": "How do I refund a JeelPay checkout after a student cancels?",
+    "should_trigger": true
+  },
+  {
+    "query": "Handle a JeelPay refund webhook with X-Jeel-Signature verification",
+    "should_trigger": true
+  },
+  {
+    "query": "Check the status for a pending JeelPay refund request",
+    "should_trigger": true
+  },
+  {
     "query": "I want to add Stripe to my e-commerce checkout so customers can pay with credit card",
     "should_trigger": false
   },

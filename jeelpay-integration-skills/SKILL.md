@@ -5,6 +5,7 @@ description: >
   Use this skill whenever the user mentions JeelPay, Jeel Pay, jeel.co, integrating SNPL for schools
   or universities, or accepting installment payments for educational fees in Saudi Arabia.
   Also trigger when the user is working with JeelPay checkout endpoints, webhook handlers,
+  refunds, reversals, withdrawal requests, partial refunds, refund status polling, refund webhooks,
   or building payment integration for schools, universities, courses, or educational institutions
   in Saudi Arabia, even if they don't explicitly say "JeelPay".
 ---
@@ -79,7 +80,16 @@ Never skip signature verification — it's the only way to confirm the webhook i
 Use `GET /v3/checkout/{id}` if the developer needs to poll status independently of webhooks.
 The status field is one of: `PENDING`, `SUCCEEDED`, `REJECTED`, `EXPIRED`.
 
-### 5. Environment Configuration
+### 5. Refunds (when requested)
+Read `references/api-refund.md` before generating refund code.
+
+Use `POST /v1/refund` with `installmentRequestId`, `amount`, `reason`, and optional `referenceId` for the
+integrator's own refund correlation value. Store the returned `withdrawalRequestId` and handle `DONE`,
+`PENDING`, and `REJECTED`. Refund completion is often asynchronous, so use refund webhooks as the primary
+completion signal and `GET /v1/refund/{id}` as a fallback. Refund webhooks use the same
+`X-Jeel-Signature` verification process as checkout webhooks.
+
+### 6. Environment Configuration
 Always structure code to support both environments via env vars:
 
 ```
@@ -108,6 +118,10 @@ for debugging. Store it with your transaction records for support ticket resolut
 
 **Always verify webhook signatures.** Generate the HMAC-SHA256 + base64 check on every incoming webhook.
 Silently accepting webhooks without verification is a security vulnerability.
+
+**Refunds are asynchronous unless proven otherwise.** Do not assume a refund is complete after submission
+unless the API returns `DONE`. Always handle `PENDING`, expect a refund webhook with the final state, and
+use polling only as a fallback.
 
 **Discourage the deprecated installment requests API.** If a developer asks about "installment requests"
 endpoints (a different, older API), explain it's being deprecated and guide them to use the checkout API
@@ -149,5 +163,5 @@ Load the appropriate file(s) before generating code:
 | Idempotency keys (prevent duplicate checkouts) | `references/api-idempotency.md` |
 | tx_id extraction + support debugging | `references/api-debugging.md` |
 | Webhook handling + signature verification | `references/api-webhooks.md` |
-| Refund submission and status | `references/api-refund.md` |
+| Refund submission, status polling, and refund webhooks | `references/api-refund.md` |
 | Sandbox URLs, test card, test credentials | `references/testing.md` |
