@@ -22,16 +22,15 @@ Request credentials at: **jeel.co/en/join-us**
 
 ## Test Card
 
-Use this card when the buyer reaches the payment page in the sandbox:
+Use one of these cards when the buyer reaches the payment page in the sandbox:
 
-| Field | Value |
-|-------|-------|
-| Card Type | Visa |
-| Card Number | `4111 1111 1111 1111` |
-| Expiry | `05/30` |
-| CVV | `123` |
+| Scenario | Card Number | Expiry | CVV |
+|----------|-------------|--------|-----|
+| Visa | `4111 1111 1111 1111` | `05/30` | `123` |
+| Visa, no 3DS | `4000 0200 0000 0000` | `12/30` | `159` |
+| Visa, 3DS | `4242 4242 4242 4242` | `12/30` | `159` |
 
-When redirected to the 3DS confirmation page, enter: **`Checkout1!`**
+When a scenario redirects to the 3DS confirmation page, enter: **`Checkout1!`**
 
 ## Sandbox User Credentials
 
@@ -105,4 +104,6 @@ Make sure you're using the raw request body (not re-serialized JSON) and the cor
 The sandbox and production use different secrets.
 
 **Token expiry in testing**
-Tokens expire in ~33 minutes. If you're testing manually and see 401 errors, your cached token expired — just re-authenticate.
+Read token lifetime from the authentication response's `expires_in` value; do not hardcode a sandbox
+token duration. If a cached token is expired and an API call returns `401`, authenticate again and
+replace the cached token.

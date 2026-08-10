@@ -6,6 +6,7 @@ description: >
   or universities, or accepting installment payments for educational fees in Saudi Arabia.
   Also trigger when the user is working with JeelPay checkout endpoints, webhook handlers,
   refunds, reversals, withdrawal requests, partial refunds, refund status polling, refund webhooks,
+  the Jeel Pay promo widget, payment-schedule estimates, or the JeelPay for WooCommerce plugin,
   or building payment integration for schools, universities, courses, or educational institutions
   in Saudi Arabia, even if they don't explicitly say "JeelPay".
 ---
@@ -52,6 +53,7 @@ For a **full integration**, deliver these components in order:
 Read `references/api-auth.md` before generating.
 
 Token caching is non-negotiable — the auth endpoint is rate-limited. Every generated auth client must:
+- Send Client Credentials as `application/x-www-form-urlencoded`, never JSON or multipart form data
 - Check for a valid cached token before making any auth request
 - Store the token with its expiration timestamp
 - Refresh ~30 seconds before expiry to avoid edge cases
@@ -59,7 +61,8 @@ Token caching is non-negotiable — the auth endpoint is rate-limited. Every gen
 
 ### 2. Checkout Creation
 Read `references/api-checkout-items.md` or `references/api-checkout-schooling.md` depending on type.
-Also read `references/api-idempotency.md` — idempotency keys are required to prevent duplicate checkouts on network timeouts.
+Also read `references/api-idempotency.md` — the header is optional in the API contract but should be
+included to prevent duplicate checkouts on network timeouts.
 
 The checkout flow is:
 1. Generate UUID for idempotency key and save to database (status: PENDING)
@@ -75,6 +78,8 @@ Read `references/api-webhooks.md` before generating.
 
 Every webhook handler must verify the `X-Jeel-Signature` header using HMAC-SHA256 + base64.
 Never skip signature verification — it's the only way to confirm the webhook is from JeelPay.
+Persist verified events and return `2xx` within 10 seconds. Assume at-least-once, out-of-order delivery:
+deduplicate by `(checkout_id, status)` and never downgrade a terminal state to `PENDING`.
 
 ### 4. Checkout Status Polling (optional)
 Use `GET /v3/checkout/{id}` if the developer needs to poll status independently of webhooks.
@@ -104,20 +109,42 @@ Map `JEELPAY_ENV` to the appropriate base URLs:
 - Production API: `https://api.jeel.co`
 - Production Auth: `https://auth.jeel.co`
 
+### Promo Widget (when requested)
+
+Read `references/promo-widget.md`. Use the hosted `JeelPromo` browser bundle and public estimate API;
+never expose API credentials in the browser. Preserve the widget's CSP, lifecycle, accessibility,
+contract-selection, and safe unavailable-state requirements.
+
+### WordPress/WooCommerce (when requested)
+
+Read `references/woocommerce.md`. Prefer the official JeelPay for WooCommerce plugin over generating a
+custom checkout integration. Guide installation, sandbox configuration, verification, and supported
+troubleshooting without placing credentials in themes or frontend code.
+
 ## Critical Rules
 
 **Token caching is mandatory.** The auth endpoint is rate-limited. If you generate code that requests
 a new token on every API call, the integration will break in production. Always cache with expiry.
 
-**Always use idempotency keys on checkout creation.** Network timeouts can cause duplicate checkouts
-if retried without an idempotency key. Generate a UUID, save it to your database first, then include it
-as the `Idempotency-Key` header. On timeout, retry with the same key.
+**Generate checkout integrations with idempotency keys by default.** The API header is optional, but
+network timeouts can cause duplicate checkouts if a caller retries without it. Generate a UUID, save it
+to the database first, then include it as the `Idempotency-Key` header. On timeout, retry with the same
+key.
+
+**Omit absent optional fields entirely.** Never serialize an optional field with `null`, an empty
+string, or a placeholder value. This applies recursively, including optional buyer fields such as
+`national_id`, item/student fields, `metadata`, `reference_id`, and refund `referenceId`. If an optional
+field is present, validate it before sending.
 
 **Always extract and store tx_id from response headers.** Every API response includes a `tx_id` header
 for debugging. Store it with your transaction records for support ticket resolution.
 
 **Always verify webhook signatures.** Generate the HMAC-SHA256 + base64 check on every incoming webhook.
 Silently accepting webhooks without verification is a security vulnerability.
+
+**Make webhook state updates monotonic and idempotent.** Jeel Pay retries for failed deliveries, and
+events may arrive out of order. Deduplicate each `(checkout_id, status)` event, protect side effects,
+and never replace `SUCCEEDED`, `REJECTED`, or `EXPIRED` with a later-arriving `PENDING` event.
 
 **Refunds are asynchronous unless proven otherwise.** Do not assume a refund is complete after submission
 unless the API returns `DONE`. Always handle `PENDING`, expect a refund webhook with the final state, and
@@ -165,3 +192,5 @@ Load the appropriate file(s) before generating code:
 | Webhook handling + signature verification | `references/api-webhooks.md` |
 | Refund submission, status polling, and refund webhooks | `references/api-refund.md` |
 | Sandbox URLs, test card, test credentials | `references/testing.md` |
+| Hosted promo widget and public payment-schedule estimates | `references/promo-widget.md` |
+| Official WordPress/WooCommerce plugin | `references/woocommerce.md` |

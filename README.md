@@ -11,8 +11,10 @@ When you ask any coding agent for help integrating JeelPay, this skill guides th
 - Generate complete, production-ready integration code:
   - **Auth client** with token caching (required by JeelPay's rate-limited auth endpoint)
   - **Checkout creation** tailored to your checkout type
-  - **Webhook handler** with HMAC-SHA256 signature verification
+  - **Webhook handler** with HMAC-SHA256 verification, retry-safe deduplication, and out-of-order delivery protection
   - **Refund support** for full/partial refunds, pending status tracking, and refund webhooks
+  - **Hosted promo widget** setup for payment-schedule estimates
+  - **Official WooCommerce plugin** installation and troubleshooting guidance
   - **Environment-based config** for easy sandbox ↔ production switching
 
 Works with any language or framework — Node.js, Python, PHP, Java, Go, and more.
@@ -35,6 +37,10 @@ Just describe what you're building:
 
 > "Add JeelPay schooling checkout to our Django school management system"
 
+> "Add the Jeel Pay promo widget to our course page"
+
+> "Help me install and test JeelPay for WooCommerce"
+
 agent will ask which checkout type your account uses (Items for universities/institutes, Schooling for traditional schools), then generate complete integration code.
 
 ## JeelPay Checkout Types
@@ -50,12 +56,14 @@ Your JeelPay account is configured for one type. Using the wrong one returns a 4
 
 A full integration includes:
 
-1. **Auth client** — OAuth 2.1 client credentials with token caching (mandatory, auth is rate-limited)
-2. **Checkout creation** — Create a checkout, get a `redirect_url`, send buyer there
-3. **Webhook handler** — Receive status updates (`SUCCEEDED`, `REJECTED`, `EXPIRED`) with signature verification
+1. **Auth client** — OAuth 2.1 client credentials as a URL-encoded form, with token caching (mandatory, auth is rate-limited)
+2. **Checkout creation** — Create a checkout with retry-safe idempotency, get a `redirect_url`, and send the buyer there; absent optional fields are omitted instead of sent empty or `null`
+3. **Webhook handler** — Receive status updates (`SUCCEEDED`, `REJECTED`, `EXPIRED`) with signature verification and at-least-once delivery handling
 4. **Status polling** — `GET /v3/checkout/{id}` for on-demand status checks
 5. **Refunds** — `POST /v1/refund`, refund status tracking, and refund webhook handling
-6. **Environment config** — Env vars for credentials + sandbox/production URL switching
+6. **Promo widget** — Hosted schedule-estimate widget, CSP, SPA lifecycle, and accessibility guidance
+7. **WooCommerce** — Official plugin setup, sandbox validation, and supported troubleshooting
+8. **Environment config** — Env vars for credentials + sandbox/production URL switching
 
 ## About JeelPay
 

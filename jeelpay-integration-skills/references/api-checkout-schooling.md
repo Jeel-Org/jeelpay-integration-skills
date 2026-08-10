@@ -77,11 +77,11 @@ Idempotency-Key: {uuid}
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `first_name` | string | Yes | 1–255 chars |
-| `last_name` | string | Yes | 1–255 chars |
+| `first_name` | string | No | Up to 255 chars; omit when unavailable |
+| `last_name` | string | No | Up to 255 chars; omit when unavailable |
 | `mobile_number` | string | Yes | Saudi mobile: `^5[0-9]{8}$` (9 digits, starts with 5) |
-| `email` | string | No | 0–255 chars |
-| `national_id` | string | No | 10 digits: `^[12][0-9]{9}$` |
+| `email` | string | No | Valid email, up to 255 chars; omit when unavailable |
+| `national_id` | string | No | 10 digits: `^[12][0-9]{9}$`; omit when unavailable |
 
 **Student:**
 
@@ -93,6 +93,22 @@ Idempotency-Key: {uuid}
 | `educational_year_id` | UUID | Yes | Academic year ID from JeelPay (provided during onboarding) |
 | `cost` | number | Yes | Total tuition fee, 2 decimal places, min 0 |
 | `reference_id` | string | No | Your internal student record ID |
+
+### Optional-field serialization
+
+Omit an optional key completely when its value is unavailable. Do not send the key with `null`, an
+empty string, or a placeholder value. Apply this recursively to `buyer`, every student, and the
+top-level request. For example, a buyer without a national ID should be serialized as:
+
+```json
+{
+  "mobile_number": "512345678"
+}
+```
+
+not as `{"mobile_number":"512345678","national_id":""}` or with `national_id: null`. Also omit
+empty `metadata`, absent checkout `reference_id`, and absent student `reference_id`. If an optional
+field is supplied, validate it before sending.
 
 **URLs:**
 
@@ -141,7 +157,7 @@ const txId = response.headers.get('tx_id');
 
 | Status | Meaning |
 |--------|---------|
-| `400` | Validation error or wrong checkout type for your account (items accounts can't use this endpoint) |
+| `400` | Validation error, wrong checkout type for your account, or concurrent duplicate `IDEMPOTENCY-001` |
 | `401` | Invalid or expired access token |
 | `404` | Group not found (your entity isn't registered or the entity_id is wrong) |
 | `500` | JeelPay server error |
@@ -192,6 +208,13 @@ Authorization: Bearer {access_token}
 ```python
 import os, uuid, requests
 
+def omit_absent_fields(values: dict) -> dict:
+    return {
+        key: value
+        for key, value in values.items()
+        if value is not None and value != ""
+    }
+
 def create_schooling_checkout(buyer: dict, students: list, reference_id: str, order_record) -> dict:
     # Generate idempotency key and save to database first
     idempotency_key = str(uuid.uuid4())
@@ -200,15 +223,15 @@ def create_schooling_checkout(buyer: dict, students: list, reference_id: str, or
     order_record.save()
     
     token = get_access_token()  # use cached token
-    payload = {
+    payload = omit_absent_fields({
         "reference_id": reference_id,
-        "buyer": buyer,
-        "students": students,
+        "buyer": omit_absent_fields(buyer),
+        "students": [omit_absent_fields(student) for student in students],
         "urls": {
             "redirect_url": os.environ["JEELPAY_REDIRECT_URL"],
             "notification_url": os.environ["JEELPAY_WEBHOOK_URL"],
         },
-    }
+    })
     response = requests.post(
         f"{os.environ['JEELPAY_API_URL']}/v3/checkout/schooling",
         json=payload,
@@ -239,6 +262,8 @@ def create_schooling_checkout(buyer: dict, students: list, reference_id: str, or
 - **Always extract and store tx_id.** Every response includes a `tx_id` header for debugging. Store it with your transaction record for support ticket resolution.
 - Checkouts expire after **2 hours** of inactivity (`status` becomes `EXPIRED`). Create a new checkout for retries.
 - All amounts are in **SAR (Saudi Riyals)** with exactly 2 decimal places (e.g., `8500.00`). No currency conversion or smallest-unit representation needed.
+- Omit optional fields entirely when no real value is available; never send `null`, empty strings, or
+  empty placeholder objects for optional data.
 - `educational_year_id` must be a valid active educational year from JeelPay. Fetch the current list from the public endpoint (no auth required):
   ```
   GET https://api.sandbox.jeel.co/v1/public/educational-years

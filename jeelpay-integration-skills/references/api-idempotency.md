@@ -4,7 +4,7 @@ Idempotency keys prevent duplicate checkout creation when network timeouts cause
 
 ## When to Use
 
-Required on checkout creation endpoints:
+The header is optional in the API contract, but integrations should send it on checkout creation endpoints:
 - `POST /v3/checkout` (Items checkout)
 - `POST /v3/checkout/schooling` (Schooling checkout)
 
@@ -14,9 +14,11 @@ Required on checkout creation endpoints:
 2. Save it to your database with PENDING status
 3. Send as `Idempotency-Key` header
 4. If timeout occurs, retry with the **same** key
-5. JeelPay returns the cached response, no duplicate created
+5. JeelPay returns the cached successful response, no duplicate created
 
 Keys expire after 24 hours. Keys are scoped per endpoint — the same key on different endpoints are independent.
+The value can contain up to 255 characters. Only successful HTTP `200` responses are cached; a request
+that failed validation is processed again if retried with the same key.
 
 ## Integration Flow
 

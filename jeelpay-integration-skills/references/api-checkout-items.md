@@ -76,11 +76,11 @@ Idempotency-Key: {uuid}
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `first_name` | string | Yes | 1–255 chars |
-| `last_name` | string | Yes | 1–255 chars |
+| `first_name` | string | No | Up to 255 chars; omit when unavailable |
+| `last_name` | string | No | Up to 255 chars; omit when unavailable |
 | `mobile_number` | string | Yes | Saudi mobile: `^5[0-9]{8}$` (9 digits, starts with 5) |
-| `email` | string | No | 0–255 chars |
-| `national_id` | string | No | 10 digits: `^[12][0-9]{9}$` |
+| `email` | string | No | Valid email, up to 255 chars; omit when unavailable |
+| `national_id` | string | No | 10 digits: `^[12][0-9]{9}$`; omit when unavailable |
 
 **Item:**
 
@@ -92,6 +92,22 @@ Idempotency-Key: {uuid}
 | `total_cost` | number | Yes | `unit_price × quantity`, 2 decimal places |
 | `reference_id` | string | Yes | Your internal item ID |
 | `entity_id` | UUID | Yes* | *Required if your group has multiple entities |
+
+### Optional-field serialization
+
+Omit an optional key completely when its value is unavailable. Do not send the key with `null`, an
+empty string, or a placeholder value. Apply this recursively to `buyer`, every item, and the top-level
+request. For example, a buyer without a national ID should be serialized as:
+
+```json
+{
+  "mobile_number": "512345678"
+}
+```
+
+not as `{"mobile_number":"512345678","national_id":""}` or with `national_id: null`. Similarly,
+omit empty `metadata`, absent `reference_id`, absent `unit_price`, and `entity_id` when it is not
+required for a single-entity group. If an optional field is supplied, validate it before sending.
 
 **URLs:**
 
@@ -140,7 +156,7 @@ tx_id = response.headers.get('tx_id')
 
 | Status | Meaning |
 |--------|---------|
-| `400` | Validation error, wrong checkout type for your account (schooling accounts can't use this endpoint), or missing `entity_id` on items for multi-entity groups |
+| `400` | Validation error, wrong checkout type for your account, missing `entity_id` for a multi-entity group, or concurrent duplicate `IDEMPOTENCY-001` |
 | `401` | Invalid or expired access token |
 | `500` | JeelPay server error |
 
@@ -188,6 +204,14 @@ Authorization: Bearer {access_token}
 ## Code Example (Node.js)
 
 ```javascript
+function omitAbsentFields(object) {
+  return Object.fromEntries(
+    Object.entries(object).filter(([, value]) =>
+      value !== undefined && value !== null && value !== ''
+    )
+  );
+}
+
 async function createItemsCheckout(buyer, items, referenceId, idempotencyKey) {
   // idempotencyKey should be a UUID generated before calling this function
   // and saved to your database with status: 'PENDING'
@@ -199,15 +223,15 @@ async function createItemsCheckout(buyer, items, referenceId, idempotencyKey) {
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey, // prevents duplicates on retry
     },
-    body: JSON.stringify({
+    body: JSON.stringify(omitAbsentFields({
       reference_id: referenceId,
-      buyer,
-      items,
+      buyer: omitAbsentFields(buyer),
+      items: items.map(omitAbsentFields),
       urls: {
         redirect_url: process.env.JEELPAY_REDIRECT_URL,
         notification_url: process.env.JEELPAY_WEBHOOK_URL,
       },
-    }),
+    })),
   });
 
   // Extract tx_id for debugging/support (present even on errors)
@@ -229,6 +253,8 @@ async function createItemsCheckout(buyer, items, referenceId, idempotencyKey) {
 - **Always extract and store tx_id.** Every response includes a `tx_id` header for debugging. Store it with your transaction record for support ticket resolution.
 - Checkouts expire after **2 hours** of inactivity (`status` becomes `EXPIRED`). Create a new checkout if the buyer returns later.
 - `total_cost` must equal `unit_price × quantity` with exactly 2 decimal places.
+- Omit optional fields entirely when no real value is available; never send `null`, empty strings, or
+  empty placeholder objects for optional data.
 - All amounts are in **SAR (Saudi Riyals)**. No unit conversion needed — just SAR with 2 decimal places (e.g., `3500.00`).
 - The `notification_url` must be publicly accessible — JeelPay cannot POST to `localhost`.
 - `metadata` values are echoed back in webhooks and status responses — useful for correlating with your internal records.

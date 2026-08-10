@@ -14,14 +14,14 @@ for a short-lived bearer token, then include that token on every API request.
 
 ```http
 POST /oauth2/token
-Content-Type: multipart/form-data
+Content-Type: application/x-www-form-urlencoded
 
 client_id=YOUR_CLIENT_ID
 client_secret=YOUR_CLIENT_SECRET
 grant_type=client_credentials
 ```
 
-The body must be `multipart/form-data` (not JSON, not `application/x-www-form-urlencoded`).
+Send the three fields as a URL-encoded form. Do not send JSON or `multipart/form-data`.
 
 ## Token Response
 
@@ -29,11 +29,16 @@ The body must be `multipart/form-data` (not JSON, not `application/x-www-form-ur
 {
   "access_token": "eyJraWQiOiJkMWZhOWEwOS0...",
   "token_type": "Bearer",
-  "expires_in": 1991
+  "expires_in": 36000,
+  "refresh_expires_in": 0,
+  "not-before-policy": 1777382301,
+  "scope": "email profile openid"
 }
 ```
 
-`expires_in` is in **seconds**.
+`expires_in` is in **seconds** and is the source of truth for token lifetime. Do not hardcode a
+particular lifetime. Client Credentials tokens normally do not have a usable refresh token, so request
+a new access token after the cached token expires.
 
 ## Using the Token
 
@@ -76,11 +81,17 @@ async function getAccessToken() {
   if (tokenCache.accessToken && Date.now() < tokenCache.expiresAt - 30000) {
     return tokenCache.accessToken;
   }
-  const form = new FormData();
-  form.append('client_id', process.env.JEELPAY_CLIENT_ID);
-  form.append('client_secret', process.env.JEELPAY_CLIENT_SECRET);
-  form.append('grant_type', 'client_credentials');
-  const res = await fetch(process.env.JEELPAY_AUTH_URL, { method: 'POST', body: form });
+  const form = new URLSearchParams({
+    client_id: process.env.JEELPAY_CLIENT_ID,
+    client_secret: process.env.JEELPAY_CLIENT_SECRET,
+    grant_type: 'client_credentials',
+  });
+  const res = await fetch(process.env.JEELPAY_AUTH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Jeel Pay authentication failed: HTTP ${res.status}`);
   const data = await res.json();
   tokenCache = {
     accessToken: data.access_token,
@@ -90,9 +101,13 @@ async function getAccessToken() {
 }
 ```
 
-**Python:**
+**Python:** (`requests` encodes `data=` as `application/x-www-form-urlencoded`.)
 ```python
-import time, requests
+import os
+import time
+
+import requests
+
 _token_cache = {"access_token": None, "expires_at": 0}
 
 def get_access_token():
@@ -122,11 +137,12 @@ function getAccessToken(): string {
     if ($tokenCache['access_token'] && time() < $tokenCache['expires_at'] - 30) {
         return $tokenCache['access_token'];
     }
-    $response = Http::asMultipart()->post(env('JEELPAY_AUTH_URL'), [
-        ['name' => 'client_id',     'contents' => env('JEELPAY_CLIENT_ID')],
-        ['name' => 'client_secret', 'contents' => env('JEELPAY_CLIENT_SECRET')],
-        ['name' => 'grant_type',    'contents' => 'client_credentials'],
+    $response = Http::asForm()->post(env('JEELPAY_AUTH_URL'), [
+        'client_id' => env('JEELPAY_CLIENT_ID'),
+        'client_secret' => env('JEELPAY_CLIENT_SECRET'),
+        'grant_type' => 'client_credentials',
     ]);
+    $response->throw();
     $data = $response->json();
     $tokenCache = [
         'access_token' => $data['access_token'],
@@ -149,8 +165,10 @@ public synchronized String getAccessToken() {
     form.add("client_id", clientId);
     form.add("client_secret", clientSecret);
     form.add("grant_type", "client_credentials");
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
     TokenResponse response = restTemplate.postForObject(authUrl,
-        new HttpEntity<>(form, new HttpHeaders()), TokenResponse.class);
+        new HttpEntity<>(form, headers), TokenResponse.class);
     accessToken = response.getAccessToken();
     expiresAt = Instant.now().plusSeconds(response.getExpiresIn());
     return accessToken;

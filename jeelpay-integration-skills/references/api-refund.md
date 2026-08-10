@@ -34,6 +34,9 @@ Request body:
 | `reason` | string | Yes | Reason for the refund request |
 | `referenceId` | string | No | Your own refund correlation reference; echoed back in refund webhooks when provided |
 
+Omit `referenceId` completely when you do not have a real correlation value. Do not send it as `null`
+or an empty string.
+
 The `amount` controls refund type:
 
 - **Full refund:** use the full refundable amount for the installment request.
@@ -44,12 +47,17 @@ The `amount` controls refund type:
 ```json
 {
   "withdrawalRequestId": "793ffb54-f5e7-47f5-b161-425ec775f14a",
-  "status": "PENDING"
+  "status": "PENDING",
+  "referenceId": "refund-order-1234"
 }
 ```
 
 The `status` can be `DONE`, `PENDING`, or `REJECTED`. Store `withdrawalRequestId` so your system can
 correlate the refund request and support follow-up investigations.
+
+`POST /v1/refund` returns HTTP `400` for missing or invalid fields, an invalid refund amount, or an
+amount that exceeds the paid amount. Store the response `tx_id` header for both successful and failed
+requests.
 
 ## Get Refund Status
 
@@ -65,9 +73,13 @@ Authorization: Bearer {access_token}
 ```json
 {
   "status": "PENDING",
-  "rejectionReason": null
+  "rejectionReason": null,
+  "referenceId": "refund-order-1234"
 }
 ```
+
+The status endpoint returns `400` for an invalid request and `404` when the refund request cannot be
+found. On `REJECTED`, persist `rejectionReason` when present.
 
 ## Refund Statuses
 

@@ -3,6 +3,17 @@
 JeelPay sends a `POST` request to your `notification_url` on every checkout status change.
 Your webhook endpoint must verify the request signature before processing it.
 
+## Delivery Contract
+
+- Jeel Pay waits up to **10 seconds** for the handler to return an HTTP `2xx` response.
+- Failed or timed-out deliveries are retried with exponential backoff, starting after **30 seconds**, for
+  up to **7 retry attempts**.
+- Delivery is **at least once**. Duplicate and delayed events are expected.
+- Delivery order is not guaranteed. An older `PENDING` event can arrive after a terminal event.
+
+Verify the signature, durably record the event, and acknowledge it within the timeout. Move slow side
+effects to a queue or background worker after the event has been persisted.
+
 ## Webhook Body
 
 The body is JSON. The structure is the same for both checkout types, differing only in `checkout_type`:
@@ -57,13 +68,13 @@ actor could send fake "SUCCEEDED" webhooks and trick your system into activating
 const crypto = require('crypto');
 
 function verifyWebhookSignature(rawBody, signature, clientSecret) {
+  if (!signature || !clientSecret) return false;
   const hmac = crypto.createHmac('sha256', clientSecret);
   hmac.update(rawBody);
   const computed = hmac.digest('base64');
-  return crypto.timingSafeEqual(
-    Buffer.from(computed),
-    Buffer.from(signature)
-  );
+  const expected = Buffer.from(computed);
+  const received = Buffer.from(signature);
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
 }
 
 // Express webhook handler:
@@ -89,7 +100,7 @@ use Illuminate\Support\Facades\Log;
 public function handle(Request $request)
 {
     $rawBody  = $request->getContent();
-    $received = $request->header('X-Jeel-Signature');
+    $received = $request->header('X-Jeel-Signature') ?? '';
     $computed = base64_encode(hash_hmac('sha256', $rawBody, env('JEELPAY_CLIENT_SECRET'), true));
 
     if (!hash_equals($computed, $received)) {
@@ -130,13 +141,21 @@ def jeelpay_webhook(request):
 ```java
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 
 private boolean verifySignature(String rawBody, String received) throws Exception {
+    if (received == null || clientSecret == null) return false;
     Mac mac = Mac.getInstance("HmacSHA256");
-    mac.init(new SecretKeySpec(clientSecret.getBytes(), "HmacSHA256"));
-    String computed = Base64.getEncoder().encodeToString(mac.doFinal(rawBody.getBytes()));
-    return MessageDigest.isEqual(computed.getBytes(), received.getBytes());
+    mac.init(new SecretKeySpec(clientSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    String computed = Base64.getEncoder().encodeToString(
+        mac.doFinal(rawBody.getBytes(StandardCharsets.UTF_8))
+    );
+    return MessageDigest.isEqual(
+        computed.getBytes(StandardCharsets.UTF_8),
+        received.getBytes(StandardCharsets.UTF_8)
+    );
 }
 ```
 
@@ -146,17 +165,22 @@ private boolean verifySignature(String rawBody, String received) throws Exceptio
 
 2. **Use timing-safe comparison** (`crypto.timingSafeEqual`, `hash_equals`, `hmac.compare_digest`) — prevents timing attacks.
 
-3. **Return 200 quickly** — acknowledge the webhook immediately, then process asynchronously if needed. JeelPay may retry if your endpoint times out.
+3. **Return `2xx` within 10 seconds** — persist the verified event first, acknowledge it, then process slow work asynchronously. Jeel Pay retries failures and timeouts.
 
-4. **Respond with 200 for known statuses** — even if you don't act on `PENDING`. Returning non-200 may trigger retries.
+4. **Respond with `2xx` for known statuses** — even if you don't act on `PENDING`. Returning non-`2xx` triggers retries.
 
-5. **Handle retries idempotently** — JeelPay may deliver the same webhook more than once. Use `checkout_id` as an idempotency key.
+5. **Handle retries idempotently** — use `(checkout_id, status)` as the event deduplication key. Using
+   only `checkout_id` would incorrectly discard a later status for the same checkout. Protect every side
+   effect so a duplicate event cannot grant access, fulfill an order, or send a confirmation twice.
+
+6. **Protect terminal state** — treat `SUCCEEDED`, `REJECTED`, and `EXPIRED` as terminal. Never move an
+   internal record from a terminal state back to `PENDING` when an older webhook arrives late.
 
 ## Status Handling
 
 ```
 PENDING  → checkout opened, buyer on JeelPay platform
-         → no action needed unless you want to show "payment in progress"
+         → record only when no terminal state has already been stored
 
 SUCCEEDED → buyer paid down payment, installment plan created
           → activate service, update order status to paid
@@ -167,3 +191,5 @@ REJECTED  → buyer declined / not eligible / cancelled
 EXPIRED   → no action for 2 hours
           → same handling as REJECTED; checkout cannot be resumed
 ```
+
+Only fulfill an order, activate a course, or mark an enrollment paid after `SUCCEEDED`.
